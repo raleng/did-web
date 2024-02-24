@@ -1,22 +1,47 @@
 defmodule DidWeb do
   @moduledoc """
-  Documentation for `DidWeb`.
+  This module contains functions to resolve a Web DID.
   """
 
   @doc """
-  Hello world.
+  Resolves the URL from a Web DID, gets the DID document from the URL, and validates the return DID document.
+
+  Currently, only the DID document "id" is validated to be equal to the provided Web DID.
+
+  Returns the resolved DID document or an error.
+
+  ## Examples
+
+      > DidWeb.resolve("did:web:example.com)
+      {:ok, did_document}
   """
-  def resolve("did:web:" <> domain_path) do
-    with {:ok, url} = resolve_domain_path(domain_path),
-         {:ok, %{body: did_document}} = Req.get(url),
-         {:ok, did_document} = validate(did_document) do
-      did_document
+  @doc since: "0.1.0"
+  def resolve(did) do
+    with {:ok, url} <- resolve_url(did),
+         {:ok, %{body: did_document}} <- Req.get(url),
+         {:ok, did_document} <- validate(did, did_document) do
+      {:ok, did_document}
+    else
+      {:error, message} -> {:error, message}
     end
   end
 
-  def resolve(_), do: {:error, "Did does not start with did:web"}
+  @doc """
+  Resolve the URL of a Web DID.
 
-  defp resolve_domain_path(domain_path) do
+  Returns the resolved URL or an error.
+
+  ## Examples
+
+      iex> DidWeb.resolve_url("did:web:example.com")
+      {:ok, "https://example.com/.well-known/did.json"}
+
+      iex> DidWeb.resolve_url("did:web:example.com%3A3000:some:path")
+      {:ok, "https://example.com:3000/some/path/did.json"}
+  """
+  @doc since: "0.1.0"
+  def resolve_url(did)
+  def resolve_url("did:web:" <> domain_path) do
     domain_path_decoded = domain_path |> String.replace(":", "/") |> URI.decode()
     url = URI.parse("https://#{domain_path_decoded}")
 
@@ -27,7 +52,13 @@ defmodule DidWeb do
     end
   end
 
-  defp validate(did_document) do
-    {:ok, did_document}
+  def resolve_url(_), do: {:error, "DID does not start with 'did:web:'"}
+
+  defp validate(did, did_document) do
+    if did != did_document["id"] do
+      {:error, "DID document id does not match requested DID"}
+    else
+      {:ok, did_document}
+    end
   end
 end
