@@ -41,6 +41,7 @@ defmodule DidWeb do
   """
   @doc since: "0.1.0"
   def resolve_url(did)
+
   def resolve_url("did:web:" <> domain_path) do
     domain_path_decoded = domain_path |> String.replace(":", "/") |> URI.decode()
     url = URI.parse("https://#{domain_path_decoded}")

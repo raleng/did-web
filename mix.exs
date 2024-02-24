@@ -7,6 +7,8 @@ defmodule DidWeb.MixProject do
       version: "0.1.0",
       elixir: "~> 1.16",
       start_permanent: Mix.env() == :prod,
+      description: description(),
+      package: package(),
       deps: deps()
     ]
   end
@@ -22,6 +24,17 @@ defmodule DidWeb.MixProject do
   defp deps do
     [
       {:req, "~> 0.4.0"}
+    ]
+  end
+
+  defp description() do
+    "Module to resolve the DID document from a Web DID."
+  end
+
+  defp package() do
+    [
+      licenses: ["MIT"],
+      links: %{"GitHub" => "https://github.com/raleng/did-web"}
     ]
   end
 end
