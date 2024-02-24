@@ -23,7 +23,8 @@ defmodule DidWeb.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:req, "~> 0.4.0"}
+      {:req, "~> 0.4.0"},
+      {:ex_doc, "~> 0.14", only: :dev, runtime: false}
     ]
   end
 
