@@ -37,5 +37,10 @@ defmodule DidWebTest do
       {result, _} = DidWeb.resolve("did:web:abc")
       assert result == :error
     end
+
+    test "did url with fragment" do
+      {result, _} = DidWeb.resolve("did:web:example.com/some/path#fragment")
+      assert result == :error
+    end
   end
 end

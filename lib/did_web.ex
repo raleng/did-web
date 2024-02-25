@@ -47,6 +47,7 @@ defmodule DidWeb do
     url = URI.parse("https://#{domain_path_decoded}")
 
     case url do
+      %{fragment: fragment} when fragment != nil -> {:error, "URL contains a fragment"}
       %{host: nil} -> {:error, "Not a valid URL: #{url}"}
       %{path: nil} -> {:ok, "#{URI.to_string(url)}/.well-known/did.json"}
       url -> {:ok, "#{URI.to_string(url)}/did.json"}
