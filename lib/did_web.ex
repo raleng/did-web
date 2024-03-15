@@ -53,6 +53,9 @@ defmodule DidWeb do
 
       iex> DidWeb.resolve_url("did:web:example.com%3A3000:some:path")
       {:ok, "https://example.com:3000/some/path/did.json"}
+
+      iex> DidWeb.resolve_url("did:web:notaurl")
+      {:error, {:input_error, "Not a valid URL: notaurl"}}
   """
   @doc since: "0.1.0"
   @spec resolve_url(did :: String.t()) :: {:ok, URI.t()} | {:error, String.t()}
@@ -67,17 +70,24 @@ defmodule DidWeb do
       |> URI.parse()
 
     case url do
-      %{fragment: fragment} when fragment != nil -> {:error, {:url_error, "URL contains a fragment"}}
-      %{host: nil} -> {:error, {:url_error, "Not a valid URL: #{url}"}}
-      %{path: nil} -> {:ok, URI.append_path(url, "/.well-known/did.json")}
-      url -> {:ok, URI.append_path(url, "/did.json")}
+      %{fragment: fragment} when fragment != nil ->
+        {:error, {:input_error, "URL contains a fragment"}}
+
+      %{host: nil} ->
+        {:error, {:input_error, "Not a valid URL: #{url}"}}
+
+      %{path: nil} ->
+        {:ok, URI.append_path(url, "/.well-known/did.json")}
+
+      url ->
+        {:ok, URI.append_path(url, "/did.json")}
     end
   end
 
-  def resolve_url(_), do: {:error, {:url_error, "DID does not start with 'did:web:'"}}
+  def resolve_url(_), do: {:error, {:input_error, "DID does not start with 'did:web:'"}}
 
   @spec get_did_document(url :: URI.t(), doh :: atom()) ::
-          {:ok, HTTPoison.Response.t()} | {:error, {:dns_error, String.t()}} 
+          {:ok, HTTPoison.Response.t()} | {:error, {:dns_error, String.t()}}
   defp get_did_document(url, :none) do
     url |> URI.to_string() |> HTTPoison.get([], follow_redirect: true) |> decode_response_body
   end
@@ -94,11 +104,11 @@ defmodule DidWeb do
 
   @spec dns_over_https(url :: URI.t()) :: {:ok, String.t()} | {:error, String.t()}
   defp dns_over_https(url) do
-    dns_over_https_url = "https://cloudflare-dns.com/dns-query"
-    headers = [{"accept", "application/dns-json"}]
+    dns_over_https_url = "https://cloudflare-dns.com/dns-query?name=#{url.host}"
 
     response =
-      HTTPoison.get("#{dns_over_https_url}?name=#{url.host}", headers: headers)
+      dns_over_https_url
+      |> HTTPoison.get(Accept: "application/dns-json")
       |> decode_response_body
 
     with {:ok, %{"Answer" => answer}} <- response,
@@ -140,7 +150,8 @@ defmodule DidWeb do
         {:error, {:http_error, "Failed to get DID document: #{reason}"}}
 
       {:error, error} when is_map(error) and error.__struct__ == Jason.DecodeError ->
-        {:error, {:json_error, "Failed to decode DID document: #{Jason.DecodeError.message(error)}"}}
+        {:error,
+         {:json_error, "Failed to decode DID document: #{Jason.DecodeError.message(error)}"}}
     end
   end
 end
