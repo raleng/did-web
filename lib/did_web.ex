@@ -69,11 +69,13 @@ defmodule DidWeb do
       |> then(&("https://" <> &1))
       |> URI.parse()
 
+    validHost = url.host =~ "."
+
     case url do
       %{fragment: fragment} when fragment != nil ->
         {:error, {:input_error, "URL contains a fragment"}}
 
-      %{host: nil} ->
+      %{host: host} when host == nil or not(validHost) ->
         {:error, {:input_error, "Not a valid URL: #{url}"}}
 
       %{path: nil} ->
