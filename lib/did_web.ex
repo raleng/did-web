@@ -34,7 +34,8 @@ defmodule DidWeb do
   @spec resolve(did :: String.t(), options :: keyword()) ::
           {:ok, map()} | {:error, {atom(), String.t()}}
   def resolve(did, options \\ [doh: :none]) do
-    with {:ok, url} <- resolve_url(did),
+    with {:ok, options} <- validate_options(options),
+         {:ok, url} <- resolve_url(did),
          {:ok, did_document} <- get_did_document(url, options[:doh]),
          {:ok, did_document} <- validate(did, did_document) do
       {:ok, did_document}
@@ -87,6 +88,26 @@ defmodule DidWeb do
   end
 
   def resolve_url(_), do: {:error, {:input_error, "DID does not start with 'did:web:'"}}
+
+  @spec validate_options(options :: keyword()) ::
+          {:ok, keyword()} | {:error, {:options_error, String.t()}}
+  defp validate_options(options) do
+    options |> IO.inspect()
+
+    with {:ok, options} <- Keyword.validate(options, doh: :none),
+         valid_doh = Enum.member?([:none, :cloudflare], options[:doh]) do
+      if valid_doh do
+        {:ok, options}
+      else
+        {:error,
+         {:options_error,
+          "Invalid DoH option provided. Must be :none or :cloudflare, but was '#{options[:doh]}'"}}
+      end
+    else
+      {:error, invalid_options} ->
+        {:error, {:options_error, "Invalid options provided: #{invalid_options}"}}
+    end
+  end
 
   @spec get_did_document(url :: URI.t(), doh :: atom()) ::
           {:ok, HTTPoison.Response.t()} | {:error, {:dns_error, String.t()}}

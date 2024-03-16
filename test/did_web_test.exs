@@ -70,5 +70,10 @@ defmodule DidWebTest do
       {result, _} = DidWeb.resolve("did:web:example.com/some/path#fragment")
       assert result == :error
     end
+
+    test "invalid option" do
+      {result, _} = DidWeb.resolve("", doh: :foobar)
+      assert result == :error
+    end
   end
 end
