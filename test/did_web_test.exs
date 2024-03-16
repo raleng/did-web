@@ -5,22 +5,50 @@ defmodule DidWebTest do
   describe "[resolve url]" do
     test "did with domain" do
       assert DidWeb.resolve_url("did:web:example.com") ==
-               {:ok, "https://example.com/.well-known/did.json"}
+               {:ok,
+                %URI{
+                  scheme: "https",
+                  authority: "example.com",
+                  host: "example.com",
+                  path: "/.well-known/did.json",
+                  port: 443
+                }}
     end
 
     test "did with domain and port" do
       assert DidWeb.resolve_url("did:web:example.com%3A3000") ==
-               {:ok, "https://example.com:3000/.well-known/did.json"}
+               {:ok,
+                %URI{
+                  scheme: "https",
+                  authority: "example.com:3000",
+                  host: "example.com",
+                  path: "/.well-known/did.json",
+                  port: 3000
+                }}
     end
 
     test "did with domain and path" do
       assert DidWeb.resolve_url("did:web:example.com:some:path") ==
-               {:ok, "https://example.com/some/path/did.json"}
+               {:ok,
+                %URI{
+                  scheme: "https",
+                  authority: "example.com",
+                  host: "example.com",
+                  path: "/some/path/did.json",
+                  port: 443
+                }}
     end
 
     test "did with domain, port and path" do
       assert DidWeb.resolve_url("did:web:example.com%3A3000:some:path") ==
-               {:ok, "https://example.com:3000/some/path/did.json"}
+               {:ok,
+                %URI{
+                  scheme: "https",
+                  authority: "example.com:3000",
+                  host: "example.com",
+                  path: "/some/path/did.json",
+                  port: 3000
+                }}
     end
 
     test "random string" do

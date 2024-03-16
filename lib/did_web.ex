@@ -10,13 +10,13 @@ defmodule DidWeb do
 
   ## Options
 
-  - `:doh`: The Web DID specification recommends to use DNS over HTTPS (DoH). DoH is not enabled by default, and currently only the Cloudflare DoH service is supported. In case you want to use a different DoH service, you can use the `resolve_url/1` function to do the HTTP request yourself.
+  - `:doh`: The Web DID specification recommends using DNS over HTTPS (DoH). DoH is not enabled by default, and currently only the Cloudflare DoH service is supported. In case you want to use a different DoH service, you can use the `resolve_url/1` function to do the HTTP request yourself.
 
     Possible values: `:none` (default), `:cloudflare`
 
   ## Validation
 
-  Currently, only the DID document "id" is validated to be equal to the provided Web DID.
+  The "id" of the resolved DID document is validated to be equal to the provided Web DID.
 
   ## Examples
 
@@ -49,13 +49,13 @@ defmodule DidWeb do
   ## Examples
 
       iex> DidWeb.resolve_url("did:web:example.com")
-      {:ok, "https://example.com/.well-known/did.json"}
+      {:ok, %URI{scheme: "https", authority: "example.com", host: "example.com", path: "/.well-known/did.json", port: 443}}
 
       iex> DidWeb.resolve_url("did:web:example.com%3A3000:some:path")
-      {:ok, "https://example.com:3000/some/path/did.json"}
+      {:ok, %URI{scheme: "https", authority: "example.com:3000", host: "example.com", path: "/some/path/did.json", port: 3000}}
 
       iex> DidWeb.resolve_url("did:web:notaurl")
-      {:error, {:input_error, "Not a valid URL: notaurl"}}
+      {:error, {:input_error, "Not a valid URL: https://notaurl"}}
   """
   @doc since: "0.1.0"
   @spec resolve_url(did :: String.t()) :: {:ok, URI.t()} | {:error, {atom(), String.t()}}
@@ -75,7 +75,7 @@ defmodule DidWeb do
       %{fragment: fragment} when fragment != nil ->
         {:error, {:input_error, "URL contains a fragment"}}
 
-      %{host: host} when host == nil or not(validHost) ->
+      %{host: host} when host == nil or not validHost ->
         {:error, {:input_error, "Not a valid URL: #{url}"}}
 
       %{path: nil} ->
@@ -149,7 +149,9 @@ defmodule DidWeb do
         {:error, {:http_error, "Failed to get DID document with HTTP status code #{code}"}}
 
       {:error, error} when is_map(error) and error.__struct__ == HTTPoison.Error ->
-        {:error, {:http_error, "Failed to get DID document with request error: #{HTTPoison.Error.message(error)}"}}
+        {:error,
+         {:http_error,
+          "Failed to get DID document with request error: #{HTTPoison.Error.message(error)}"}}
 
       {:error, error} when is_map(error) and error.__struct__ == Jason.DecodeError ->
         {:error,
