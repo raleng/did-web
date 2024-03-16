@@ -32,7 +32,13 @@ defmodule DidWeb do
   """
   @doc since: "0.1.0"
   @spec resolve(did :: String.t(), options :: keyword()) ::
-          {:ok, map()} | {:error, {atom(), String.t()}}
+          {:ok, map()}
+          | {:error, {:options_error, String.t()}}
+          | {:error, {:input_error, String.t()}}
+          | {:error, {:dns_error, String.t()}}
+          | {:error, {:http_error, String.t()}}
+          | {:error, {:json_error, String.t()}}
+          | {:error, {:validation_error, String.t()}}
   def resolve(did, options \\ [doh: :none]) do
     with {:ok, options} <- validate_options(options),
          {:ok, url} <- resolve_url(did),
@@ -59,7 +65,7 @@ defmodule DidWeb do
       {:error, {:input_error, "Not a valid URL: https://notaurl"}}
   """
   @doc since: "0.1.0"
-  @spec resolve_url(did :: String.t()) :: {:ok, URI.t()} | {:error, {atom(), String.t()}}
+  @spec resolve_url(did :: String.t()) :: {:ok, URI.t()} | {:error, {:input_error, String.t()}}
   def resolve_url(did)
 
   def resolve_url("did:web:" <> domain_path) do
@@ -110,9 +116,15 @@ defmodule DidWeb do
   end
 
   @spec get_did_document(url :: URI.t(), doh :: atom()) ::
-          {:ok, HTTPoison.Response.t()} | {:error, {:dns_error, String.t()}}
+          {:ok, HTTPoison.Response.t()}
+          | {:error, {:dns_error, String.t()}}
+          | {:error, {:http_error, String.t()}}
+          | {:error, {:json_error, String.t()}}
   defp get_did_document(url, :none) do
-    url |> URI.to_string() |> HTTPoison.get([], follow_redirect: true) |> decode_response_body
+    url
+    |> URI.to_string()
+    |> HTTPoison.get([], follow_redirect: true)
+    |> decode_response_body
   end
 
   defp get_did_document(url, :cloudflare) do
@@ -125,7 +137,7 @@ defmodule DidWeb do
     end
   end
 
-  @spec dns_over_https(url :: URI.t()) :: {:ok, String.t()} | {:error, String.t()}
+  @spec dns_over_https(url :: URI.t()) :: {:ok, String.t()} | {:error, {:dns_error, String.t()}}
   defp dns_over_https(url) do
     dns_over_https_url = "https://cloudflare-dns.com/dns-query?name=#{url.host}"
 
@@ -149,7 +161,8 @@ defmodule DidWeb do
     end
   end
 
-  @spec validate(did :: String.t(), did_document :: any()) :: {:ok, any()} | {:error, String.t()}
+  @spec validate(did :: String.t(), did_document :: any()) ::
+          {:ok, any()} | {:error, {:validation_error, String.t()}}
   defp validate(did, did_document) do
     if did != did_document["id"] do
       {:error, {:validation_error, "DID document id does not match requested DID"}}
@@ -160,7 +173,10 @@ defmodule DidWeb do
 
   @spec decode_response_body(
           response :: {:ok, HTTPoison.Response.t()} | {:error, HTTPoison.Error.t()}
-        ) :: {:ok, term()} | {:error, String.t()}
+        ) ::
+          {:ok, term()}
+          | {:error, {:http_error, String.t()}}
+          | {:error, {:json_error, String.t()}}
   defp decode_response_body(response) do
     with {:ok, %HTTPoison.Response{status_code: 200, body: body}} <- response,
          {:ok, decoded} <- Jason.decode(body) do
