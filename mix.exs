@@ -4,7 +4,7 @@ defmodule DidWeb.MixProject do
   def project do
     [
       app: :did_web,
-      version: "0.2.0",
+      version: "0.2.1",
       elixir: "~> 1.16",
       start_permanent: Mix.env() == :prod,
       description: description(),
