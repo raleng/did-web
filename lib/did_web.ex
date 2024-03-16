@@ -20,14 +20,14 @@ defmodule DidWeb do
 
   ## Examples
 
-      Default HTTPS request 
+      # Default HTTPS request
 
-      > DidWeb.resolve("did:web:example.com)
+      > DidWeb.resolve("did:web:example.com")
       {:ok, did_document}
 
-      Request using Cloudflares DNS over HTTPS service
+      # Request using Cloudflares DNS over HTTPS service
 
-      > DidWeb.resolve("did:web:example.com, doh: :cloudflare)
+      > DidWeb.resolve("did:web:example.com", doh: :cloudflare)
       {:ok, did_document}
   """
   @doc since: "0.1.0"
