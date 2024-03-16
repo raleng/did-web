@@ -32,7 +32,7 @@ defmodule DidWeb do
   """
   @doc since: "0.1.0"
   @spec resolve(did :: String.t(), options :: keyword()) ::
-          {:ok, map()} | {:error, String.t()}
+          {:ok, map()} | {:error, {atom(), String.t()}}
   def resolve(did, options \\ [doh: :none]) do
     with {:ok, url} <- resolve_url(did),
          {:ok, did_document} <- get_did_document(url, options[:doh]),
@@ -58,7 +58,7 @@ defmodule DidWeb do
       {:error, {:input_error, "Not a valid URL: notaurl"}}
   """
   @doc since: "0.1.0"
-  @spec resolve_url(did :: String.t()) :: {:ok, URI.t()} | {:error, String.t()}
+  @spec resolve_url(did :: String.t()) :: {:ok, URI.t()} | {:error, {atom(), String.t()}}
   def resolve_url(did)
 
   def resolve_url("did:web:" <> domain_path) do
@@ -116,7 +116,7 @@ defmodule DidWeb do
       {:ok, resolved_ip}
     else
       {:ok, _} ->
-        {:error, {:dns_error, "DNS resolution faild to return Answer"}}
+        {:error, {:dns_error, "DNS resolution faild to return an 'Answer'"}}
 
       {:error, message} ->
         {:error, {:dns_error, message}}
@@ -144,10 +144,10 @@ defmodule DidWeb do
       {:ok, decoded}
     else
       {:ok, %HTTPoison.Response{status_code: code}} ->
-        {:error, {:http_error, "Failed to get DID document with status code #{code}"}}
+        {:error, {:http_error, "Failed to get DID document with HTTP status code #{code}"}}
 
-      {:error, %HTTPoison.Error{reason: reason}} ->
-        {:error, {:http_error, "Failed to get DID document: #{reason}"}}
+      {:error, error} when is_map(error) and error.__struct__ == HTTPoison.Error ->
+        {:error, {:http_error, "Failed to get DID document with request error: #{HTTPoison.Error.message(error)}"}}
 
       {:error, error} when is_map(error) and error.__struct__ == Jason.DecodeError ->
         {:error,
