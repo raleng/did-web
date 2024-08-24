@@ -98,16 +98,14 @@ defmodule DidWeb do
   @spec validate_options(options :: keyword()) ::
           {:ok, keyword()} | {:error, {:options_error, String.t()}}
   defp validate_options(options) do
-    options |> IO.inspect()
-
-    with {:ok, options} <- Keyword.validate(options, doh: :none),
-         valid_doh = Enum.member?([:none, :cloudflare], options[:doh]) do
-      if valid_doh do
+    with {:ok, options} <- Keyword.validate(options, doh: :none) do
+      if Enum.member?([:none, :cloudflare], options[:doh]) do
         {:ok, options}
       else
-        {:error,
-         {:options_error,
-          "Invalid DoH option provided. Must be :none or :cloudflare, but was '#{options[:doh]}'"}}
+        error_msg =
+          "Invalid DoH option provided. Must be :none or :cloudflare, but was '#{options[:doh]}'"
+
+        {:error, {:options_error, error_msg}}
       end
     else
       {:error, invalid_options} ->
@@ -116,83 +114,111 @@ defmodule DidWeb do
   end
 
   @spec get_did_document(url :: URI.t(), doh :: atom()) ::
-          {:ok, HTTPoison.Response.t()}
+          {:ok, term()}
           | {:error, {:dns_error, String.t()}}
           | {:error, {:http_error, String.t()}}
           | {:error, {:json_error, String.t()}}
   defp get_did_document(url, :none) do
-    url
-    |> URI.to_string()
-    |> HTTPoison.get([], follow_redirect: true)
-    |> decode_response_body
+    with {:ok, %HTTPoison.Response{body: body}} <- http_get(url) do
+      decode_response_body(body)
+    end
   end
 
   defp get_did_document(url, :cloudflare) do
-    with {:ok, resolved_ip} <- dns_over_https(url),
-         resolve_option = {:resolve, [{url.host, 443, resolved_ip}]} do
+    with {:ok, options} <- dns_over_https_options(url),
+         {:ok, %HTTPoison.Response{body: body}} <- http_get(url, options) do
+      decode_response_body(body)
+    end
+  end
+
+  @spec http_get(url :: URI.t(), options: keyword()) ::
+          {:ok, HTTPoison.Response.t()} | {:error, {:http_error, String.t()}}
+  defp http_get(url, options \\ []) do
+    http_response =
       url
       |> URI.to_string()
-      |> HTTPoison.get([], follow_redirect: true, hackney: [options: [resolve_option]])
-      |> decode_response_body
-    end
-  end
+      |> HTTPoison.get([], follow_redirect: true, hackney: options)
 
-  @spec dns_over_https(url :: URI.t()) :: {:ok, String.t()} | {:error, {:dns_error, String.t()}}
-  defp dns_over_https(url) do
-    dns_over_https_url = "https://cloudflare-dns.com/dns-query?name=#{url.host}"
+    case http_response do
+      {:ok, %HTTPoison.Response{status_code: 200} = response} ->
+        {:ok, response}
 
-    response =
-      dns_over_https_url
-      |> HTTPoison.get(Accept: "application/dns-json")
-      |> decode_response_body
-
-    with {:ok, %{"Answer" => answer}} <- response,
-         %{"data" => resolved_ip} <- Enum.find(answer, &(&1["type"] == 1)) do
-      {:ok, resolved_ip}
-    else
-      {:ok, _} ->
-        {:error, {:dns_error, "DNS resolution faild to return an 'Answer'"}}
-
-      {:error, message} ->
-        {:error, {:dns_error, message}}
-
-      nil ->
-        {:error, {:dns_error, "DNS resolution failed, no A name record found"}}
-    end
-  end
-
-  @spec validate(did :: String.t(), did_document :: any()) ::
-          {:ok, any()} | {:error, {:validation_error, String.t()}}
-  defp validate(did, did_document) do
-    if did != did_document["id"] do
-      {:error, {:validation_error, "DID document id does not match requested DID"}}
-    else
-      {:ok, did_document}
-    end
-  end
-
-  @spec decode_response_body(
-          response :: {:ok, HTTPoison.Response.t()} | {:error, HTTPoison.Error.t()}
-        ) ::
-          {:ok, term()}
-          | {:error, {:http_error, String.t()}}
-          | {:error, {:json_error, String.t()}}
-  defp decode_response_body(response) do
-    with {:ok, %HTTPoison.Response{status_code: 200, body: body}} <- response,
-         {:ok, decoded} <- Jason.decode(body) do
-      {:ok, decoded}
-    else
       {:ok, %HTTPoison.Response{status_code: code}} ->
         {:error, {:http_error, "Failed to get DID document with HTTP status code #{code}"}}
 
-      {:error, error} when is_map(error) and error.__struct__ == HTTPoison.Error ->
-        {:error,
-         {:http_error,
-          "Failed to get DID document with request error: #{HTTPoison.Error.message(error)}"}}
+      {:error, error} ->
+        error_msg =
+          "Failed to get DID document with request error: #{HTTPoison.Error.message(error)}"
 
-      {:error, error} when is_map(error) and error.__struct__ == Jason.DecodeError ->
-        {:error,
-         {:json_error, "Failed to decode DID document: #{Jason.DecodeError.message(error)}"}}
+        {:error, {:http_error, error_msg}}
+    end
+  end
+
+  @spec dns_over_https_options(url :: URI.t()) ::
+          {:ok, keyword()}
+          | {:error, {:dns_error, String.t()}}
+          | {:error, {:http_error, String.t()}}
+  defp dns_over_https_options(url) do
+    dns_over_https_url = "https://cloudflare-dns.com/dns-query?name=#{url.host}"
+
+    with {:ok, body} <- http_get_dns(dns_over_https_url),
+         {:ok, decoded} <- decode_response_body(body),
+         {:ok, ip} <- get_ip(decoded) do
+      {:ok, [options: [{:resolve, [{url.host, 443, ip}]}]]}
+    end
+  end
+
+  @spec http_get_dns(url :: String.t()) ::
+          {:ok, term()} | {:error, {:dns_error, String.t()}} | {:error, {:http_error, String.t()}}
+  defp http_get_dns(url) do
+    case HTTPoison.get(url, Accept: "application/dns-json") do
+      {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
+        {:ok, body}
+
+      {:ok, %HTTPoison.Response{status_code: code}} ->
+        {:error, {:dns_error, "Failed to resolve URL over https with status code #{code}"}}
+
+      {:error, error} ->
+        error_msg =
+          "Failed to resolve URL over https with request error: #{HTTPoison.Error.message(error)}"
+
+        {:error, {:http_error, error_msg}}
+    end
+  end
+
+  @spec get_ip(dns_response :: term()) :: {:ok, String.t()} | {:error, {:dns_error, String.t()}}
+  defp get_ip(dns_response) do
+    with %{"Answer" => answer} <- dns_response,
+         %{"data" => ip} <- Enum.find(answer, &(&1["type"] == 1)) do
+      {:ok, ip}
+    else
+      nil ->
+        {:error, {:dns_error, "DNS resolution failed, no A name record found"}}
+
+      _ ->
+        {:error, {:dns_error, "DNS resolution faild to return an 'Answer'"}}
+    end
+  end
+
+  @spec validate(did :: String.t(), did_document :: term()) ::
+          {:ok, term()} | {:error, {:validation_error, String.t()}}
+  defp validate(did, %{"id" => did} = did_document), do: {:ok, did_document}
+
+  defp validate(did, %{"id" => id}) do
+    error_msg = "DID document id (#{id}) does not match requested DID (#{did})"
+    {:error, {:validation_error, error_msg}}
+  end
+
+  @spec decode_response_body(body :: term()) ::
+          {:ok, term()} | {:error, {:json_error, String.t()}}
+  defp decode_response_body(body) do
+    case Jason.decode(body) do
+      {:ok, decoded} ->
+        {:ok, decoded}
+
+      {:error, error} ->
+        error_msg = "Failed to decode JSON response body: #{Jason.DecodeError.message(error)}"
+        {:error, {:json_error, error_msg}}
     end
   end
 end
