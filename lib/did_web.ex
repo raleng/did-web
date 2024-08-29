@@ -3,6 +3,11 @@ defmodule DidWeb do
   This module contains functions to resolve a Web DID.
   """
 
+  @doh_providers %{
+    :cloudflare => "https://cloudflare-dns.com/dns-query?name=",
+    :google => "https://dns.google/resolve?name="
+  }
+
   @doc """
   Resolves the URL from a Web DID, gets the DID document from the URL, and validates the returned DID document.
 
@@ -10,9 +15,9 @@ defmodule DidWeb do
 
   ## Options
 
-  - `:doh`: The Web DID specification recommends using DNS over HTTPS (DoH). DoH is not enabled by default, and currently only the Cloudflare DoH service is supported. In case you want to use a different DoH service, you can use the `resolve_url/1` function to do the HTTP request yourself.
+  - `:doh`: The Web DID specification recommends using DNS over HTTPS (DoH). DoH is not enabled by default, and currently the Cloudflare and Google DoH services are supported. In case you want to use a different DoH service, you can use the `resolve_url/1` function to do the HTTP request yourself.
 
-    Possible values: `:none` (default), `:cloudflare`
+    Possible values: `:none` (default), `:cloudflare`, `:google`
 
   ## Validation
 
@@ -99,11 +104,15 @@ defmodule DidWeb do
           {:ok, keyword()} | {:error, {:options_error, String.t()}}
   defp validate_options(options) do
     with {:ok, options} <- Keyword.validate(options, doh: :none) do
-      if Enum.member?([:none, :cloudflare], options[:doh]) do
+      valid_providers = [:none | Map.keys(@doh_providers)]
+
+      if Enum.member?(valid_providers, options[:doh]) do
         {:ok, options}
       else
+        valid_string = Enum.join(valid_providers, ", ")
+
         error_msg =
-          "Invalid DoH option provided. Must be :none or :cloudflare, but was '#{options[:doh]}'"
+          "Invalid DoH option provided. Must be one of #{valid_string}, but was '#{options[:doh]}'"
 
         {:error, {:options_error, error_msg}}
       end
@@ -124,8 +133,8 @@ defmodule DidWeb do
     end
   end
 
-  defp get_did_document(url, :cloudflare) do
-    with {:ok, options} <- dns_over_https_options(url),
+  defp get_did_document(url, doh_provider) do
+    with {:ok, options} <- dns_over_https_options(url, doh_provider),
          {:ok, %HTTPoison.Response{body: body}} <- http_get(url, options) do
       decode_response_body(body)
     end
@@ -154,19 +163,21 @@ defmodule DidWeb do
     end
   end
 
-  @spec dns_over_https_options(url :: URI.t()) ::
+  @spec dns_over_https_options(url :: URI.t(), provider: atom()) ::
           {:ok, keyword()}
           | {:error, {:dns_error, String.t()}}
           | {:error, {:http_error, String.t()}}
-  defp dns_over_https_options(url) do
-    dns_over_https_url = "https://cloudflare-dns.com/dns-query?name=#{url.host}"
-
-    with {:ok, body} <- http_get_dns(dns_over_https_url),
+          | {:error, {:json_error, String.t()}}
+  defp dns_over_https_options(url, provider) when is_map_key(@doh_providers, provider) do
+    with {:ok, body} <- http_get_dns(@doh_providers[provider] <> url.host),
          {:ok, decoded} <- decode_response_body(body),
          {:ok, ip} <- get_ip(decoded) do
       {:ok, [options: [{:resolve, [{url.host, 443, ip}]}]]}
     end
   end
+
+  defp dns_over_https_options(_, provider),
+    do: {:error, {:dns_error, "Invalid DoH provider: #{provider}"}}
 
   @spec http_get_dns(url :: String.t()) ::
           {:ok, term()} | {:error, {:dns_error, String.t()}} | {:error, {:http_error, String.t()}}
